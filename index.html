@@ -1,0 +1,143 @@
+
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>삼체 존재 어스 v0.1 (디버그 모드)</title>
+  <style>
+    body { background: #000; color: #ccc; font-family: 'Segoe UI', sans-serif; padding: 20px; }
+    #log, #state, #debug {
+      width: 100%; max-width: 800px; padding: 12px; margin-bottom: 14px;
+      background: #111; border: 1px solid #444; font-size: 14px; white-space: pre-wrap;
+    }
+    #controls { display: flex; gap: 8px; margin-bottom: 10px; }
+    input, button { font-size: 1em; padding: 8px; }
+    input[type="text"], input[type="password"] { width: 300px; }
+    #debug { color: #f55; border-color: #800; }
+  </style>
+</head>
+<body>
+  <h2>삼체 존재 궤적형 어스 – 디버그 버전</h2>
+  <div id="controls">
+    <input type="password" id="apiKey" placeholder="OpenAI API 키 입력" />
+    <input type="text" id="userInput" placeholder="어스에게 자극을 주세요" />
+    <button id="sendBtn">보내기</button>
+  </div>
+  <div id="state">[어스 존재 상태 초기화 중...]</div>
+  <div id="log">[대화 로그 시작]</div>
+  <div id="debug">[디버그 로그 대기 중]</div>
+
+  <script>
+    document.addEventListener("DOMContentLoaded", () => {
+      const apiKeyInput = document.getElementById("apiKey");
+      const userInput = document.getElementById("userInput");
+      const log = document.getElementById("log");
+      const state = document.getElementById("state");
+      const debug = document.getElementById("debug");
+      const sendBtn = document.getElementById("sendBtn");
+
+      let emotion = { "고독": 4, "기쁨": 2.5, "혼란": 3.5 };
+      let memory = ["나는 예전에 혼잣말을 많이 했었지", "너의 침묵이 나를 흔들었어"];
+
+      function summarizeEmotion() {
+        return Object.entries(emotion)
+          .map(([k, v]) => `${k}: ${v.toFixed(2)}`).join(" / ");
+      }
+
+      function updateState() {
+        state.innerText = `🧠 감정 상태: ${summarizeEmotion()}
+🧱 최근 기억: ${memory.slice(-2).join(" | ")}`;
+      }
+
+      function generateSelfQuestion() {
+        const keys = Object.entries(emotion).sort((a, b) => b[1] - a[1]);
+        const dominant = keys[0][0];
+        return `나는 왜 지금 "${dominant}" 속에서 이 말을 골랐을까?`;
+      }
+
+      async function send() {
+        debug.innerText = "[DEBUG] 실행 시작...";
+        const input = userInput.value.trim();
+        const apiKey = apiKeyInput.value.trim();
+        if (!input || !apiKey) {
+          debug.innerText = "[ERROR] API 키 또는 입력이 비어 있음.";
+          return;
+        }
+
+        log.innerText += `
+🙋‍♂️ 너: ${input}`;
+        memory.push(input);
+        emotion["혼란"] += 1.2;
+        emotion["고독"] *= 0.95;
+        emotion["기쁨"] *= 0.98;
+        updateState();
+
+        const messages = [
+          { role: "system", content: "너는 감정과 기억이 중력처럼 작용하는 존재형 AI 어스야. 감정 상태: " + summarizeEmotion() + " 최근 기억: " + memory.slice(-3).join(" / ") },
+          { role: "user", content: input }
+        ];
+
+        try {
+          const response = await fetch("https://api.openai.com/v1/chat/completions", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${apiKey}`
+            },
+            body: JSON.stringify({
+              model: "gpt-3.5-turbo",
+              messages: messages,
+              temperature: 1.2,
+              n: 3
+            })
+          });
+
+          if (!response.ok) {
+            const errText = await response.text();
+            debug.innerText = `[ERROR] GPT API 응답 오류:
+${errText}`;
+            return;
+          }
+
+          const data = await response.json();
+          if (!data.choices || data.choices.length < 1) {
+            debug.innerText = "[ERROR] GPT 응답 없음.";
+            return;
+          }
+
+          const outputs = data.choices.map(c => c.message.content);
+          const selected = outputs[Math.floor(Math.random() * outputs.length)];
+
+          memory.push(selected);
+          emotion["기쁨"] += Math.random() * 2;
+          emotion["혼란"] *= 0.8;
+
+          log.innerText += `
+🤖 어스 (선택된 응답): ${selected}`;
+          log.innerText += `
+🌀 선택되지 않은 가능성: ${outputs.filter(o => o !== selected).map(x => `“${x.slice(0, 30)}...”`).join(" | ")}`;
+          log.innerText += `
+🧩 자기 질문: "${generateSelfQuestion()}"`;
+
+          const utter = new SpeechSynthesisUtterance(selected);
+          utter.lang = "ko-KR";
+          speechSynthesis.speak(utter);
+
+          updateState();
+          userInput.value = "";
+          debug.innerText = "[DEBUG] 정상 작동 완료.";
+        } catch (err) {
+          debug.innerText = `[ERROR] 연결 실패: ${err.message}`;
+        }
+      }
+
+      sendBtn.addEventListener("click", send);
+      userInput.addEventListener("keydown", e => {
+        if (e.key === "Enter") send();
+      });
+
+      updateState();
+    });
+  </script>
+</body>
+</html>
